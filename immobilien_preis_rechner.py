@@ -1,9 +1,16 @@
-import reportlab as rl   # erstellt pdfs
-import pandas as pd      # pandas kann Excel Dateien lesen
-import tkinter as tk     # Gui graphical user interface
-from tkinter import  ttk # ttk muss explizit extra importiert werden
-import datetime as dt    # Für das aktuelle Jahr
-import os                # Filemanagment
+from reportlab.pdfgen import canvas                # erstellt pdfs
+from reportlab.pdfbase.ttfonts import TTFont       # Fonts
+from reportlab.pdfbase import pdfmetrics           
+from reportlab.lib import colors                   # Farben
+import pandas as pd                                # pandas kann Excel Dateien lesen
+import tkinter as tk                               # Gui graphical user interface
+from tkinter import  ttk                           # ttk muss explizit extra importiert werden
+from tkinter import messagebox                     # Pop Up Fehler Fenster
+import datetime as dt                              # Für das aktuelle Jahr
+import os                                          # Filemanagment
+import pygame                                      # Library Spiele, wir nutzen nur die Tonausgabe
+
+##################################################################################################
 
 # Standardwerte für Kostenfaktoren
 bundeslaender_standard_dict = {  "Baden-Württemberg": 1.5,
@@ -49,12 +56,18 @@ denkmalschutz_standard_rate = 0.20
 
 baujahr_standard_rate = 0.001
 
+selected_bundesland = None                                                                         # Werte auf None um später zu prüfen, ob etwas ausgewählt wurde.
+selected_region = None
+selected_ausstattung = None
+selected_hausart = None
+
+####################################################################################################
 
 class Immobilie:
    
    
    def __init__(self,
-                bundeslaender_dict:dict = bundeslaender_standard_dict,
+                bundeslaender_dict:dict = bundeslaender_standard_dict,                             # Standardwerte von oben, falls nichts angegeben wird
                 region_dict:dict = region_standard_dict,
                 ausstattung_dict:dict = ausstattung_standard_dict,
                 hausart_dict:dict = hausart_standard_dict,
@@ -93,32 +106,32 @@ class Immobilie:
 
 
    def baujahr_faktor(self) -> float:
-      result = 1 - (dt.date.today().year - self.baujahr) * self.baujahr_rate
+      result = 1 - (dt.date.today().year - self.baujahr) * self.baujahr_rate                       # Berechne Baujahr-faktor
       return result
 
 
    def berechnung(self, 
-                  selected_bundesland,
-                  selected_region, 
-                  selected_ausstattung, 
-                  selected_hausart, 
-                  architekt_status, 
-                  markler_status, 
-                  denkmalschutz_status
+                  selected_bundesland:str,
+                  selected_region:str, 
+                  selected_ausstattung:str, 
+                  selected_hausart:str, 
+                  architekt_status:int,                                                            # Status int, 0 oder 1
+                  markler_status:int, 
+                  denkmalschutz_status:int
                   ) -> float:
       
-      result = round(self.bundeslaender_dict[selected_bundesland] * 
-                     self.region_dict[selected_region] * 
-                     self.ausstattung_dict[selected_ausstattung] * 
-                     self.hausart_dict[selected_hausart] *
-                     self.baujahr_faktor() * 
-                     (1 + int(architekt_status) * self.architekt_rate) * 
-                     (1 + int(markler_status) * self.makler_rate) * 
-                     (1 + int(denkmalschutz_status) * self.denkmalschutz_rate)* 
-                     self.grundpreis(),
-                     2)
+      result = round(self.bundeslaender_dict[selected_bundesland] *                                # Bundesland-faktor
+                     self.region_dict[selected_region] *                                           # Region-faktor
+                     self.ausstattung_dict[selected_ausstattung] *                                 # Ausstattungs-faktor
+                     self.hausart_dict[selected_hausart] *                                         # Hausart-faktor
+                     self.baujahr_faktor() *                                                       # Berechne Baujahr-faktor
+                     (1 + int(architekt_status) * self.architekt_rate) *                           # Architekt-faktor
+                     (1 + int(markler_status) * self.makler_rate) *                                # Markler-faktor
+                     (1 + int(denkmalschutz_status) * self.denkmalschutz_rate)*                    # Denkmalschutz-faktor
+                     self.grundpreis(),                                                            # Berechne Grundpreis
+                     2)                                                                            # Rundungsstellen
       return result
-
+####################################################################################################
 
 # Fenster erstellen
 
@@ -127,84 +140,103 @@ window = tk.Tk()                                                                
 window.geometry("800x600")                                                                         # Legt die Größe des Fensters fest
 window.title("Real Estate Price Calculator")                                                       # Gibt dem Fenster einen Titel
 
+# Menubar erstellen
+menubar = tk.Menu(window)                                                                          # Erstellt eine Menubar für das Fenster window
+filemenu = tk.Menu(menubar, tearoff=0)                                                             # Dropdown Menu, dass nicht abgetrennt(tearoff=0) ist
+
+# Menubar Funktionen
+def donothing():
+   pass
+
+# Menubar 
+filemenu.add_command(label="Preisinfomationen laden", command=donothing)
+filemenu.add_separator()
+filemenu.add_command(label="Beenden", command=window.destroy)
+menubar.add_cascade(label="File", menu=filemenu)
+
+helpmenu = tk.Menu(menubar, tearoff=0)
+helpmenu.add_command(label="About", command=donothing)
+menubar.add_cascade(label="Help", menu=helpmenu)
+
+
+####################################################################################################
+# Fenster Design
 
 label_welcome = tk.Label(window, text='Willkommen!')                                               # Erstellt ein Label im Fenster "window"
-label_welcome.grid(row=0, column=4)   
+label_welcome.grid(row=0, column=4, sticky=tk.W)   
+
+# Comboboxen Auswahl Funktion
+def select_combobox(event, combobox_name:str) -> None:                                             # Wenn eine Bundesland ausgewählt wird, wird es gespeichert
+   global selected_bundesland, selected_region
+   global selected_ausstattung, selected_hausart
+
+   if combobox_name == "bundesland":
+      selected_bundesland = event.widget.get()                                                     # Speichert den momentan ausgewählten Combobox Inhalt als globale variable
+   elif combobox_name =="region":                                                                  # In event ist der Wert und welches Widget den Wert beinhaltet gespeichert
+      selected_region = event.widget.get()                                                         # mit event.widget.get bekommt man den jeweiligen Wert der zugehörigen Combobox
+   elif combobox_name == "ausstattung":
+      selected_ausstattung = event.widget.get() 
+   elif combobox_name == "hausart":
+      selected_hausart = event.widget.get()
 
 # Combobox Bundesländer                                                          
 bundeslaender = list(bundeslaender_standard_dict.keys())                                           # Liste der Bundesländer aus dem Dictionary bundeslaender_standard
                   
-label_combobox_bundesland = tk.Label(window, text="Bundesland auswählen:")                                    # Label für Combobox
-label_combobox_bundesland.grid(row=1, column=0, sticky=tk.W)
+label_combobox_bundesland = tk.Label(window, text="Bundesland auswählen:")                         # Label für Combobox
+label_combobox_bundesland.grid(row=1, column=0, sticky=tk.W)   
 
-def select_bundesland(event):                                                                                 # Wenn eine Bundesland ausgewählt wird, wird es gespeichert
-   global selected_bundesland
-   selected_bundesland = combobox_bundesland.get()                                                         # Speichert den momentan ausgewählten Combobox Inhalt als globale variable
-
-combobox_bundesland = ttk.Combobox(window, values=bundeslaender)
+combobox_bundesland = ttk.Combobox(window, values=bundeslaender, state="readonly")
 combobox_bundesland.grid(row=1, column=1, sticky=tk.W)
-combobox_bundesland.set("Bundesland")                                                                        # Defaul Wert der Combobox
-combobox_bundesland.bind("<<ComboboxSelected>>", select_bundesland)                                                     # Event Handle, wird etwas ausgewählt, wird select funktion ausgeführt
+combobox_bundesland.set("Bundesland")                                                                 # Defaul Wert der Combobox
+combobox_bundesland.bind("<<ComboboxSelected>>", lambda event: select_combobox(event, "bundesland"))  # Event Handle, wird etwas ausgewählt, wird select funktion ausgeführt
 
 
 # Combobox Region
 regionen = list(region_standard_dict.keys())                                                       # Liste der Regionen aus dem Dictionary region_standard
                   
-label_combobox_region = tk.Label(window, text="Region auswählen:")                                        # Label für Combobox
+label_combobox_region = tk.Label(window, text="Region auswählen:")                                 # Label für Combobox
 label_combobox_region.grid(row=2, sticky=tk.W)
 
-def select_region(event):                                                                                 # Wenn eine Bundesland ausgewählt wird, wird es gespeichert
-   global selected_region 
-   selected_region = combobox_region.get()                                                               # Speichert den momentan ausgewählten Combobox Inhalt als globale variable
-
-combobox_region = ttk.Combobox(window, values=regionen)
+combobox_region = ttk.Combobox(window, values=regionen, state="readonly")
 combobox_region.grid(row=2, column=1, sticky=tk.W)
-combobox_region.set("Region")                                                                            # Defaul Wert der Combobox
-combobox_region.bind("<<ComboboxSelected>>", select_region)                                                     # Event Handle, wird etwas ausgewählt, wird select funktion ausgeführt
+combobox_region.set("Region")                                                                      # Defaul Wert der Combobox
+combobox_region.bind("<<ComboboxSelected>>", lambda event: select_combobox(event, "region"))                                        # Event Handle: wird etwas ausgewählt, wird die jeweilige select funktion ausgeführt
 
 
 # Combobox Ausstatttung
 austattungen = list(ausstattung_standard_dict.keys())                                              # Liste der Regionen aus dem Dictionary ausstattungen_standard
                   
-label_combobox_ausstattung = tk.Label(window, text="Ausstattung auswählen:")                                   # Label für Combobox
+label_combobox_ausstattung = tk.Label(window, text="Ausstattung auswählen:")                       # Label für Combobox
 label_combobox_ausstattung.grid(row=3, sticky=tk.W)
 
-def select_ausstattung(event):                                                                                 # Wenn eine Bundesland ausgewählt wird, wird es gespeichert
-   global selected_ausstattung
-   selected_ausstattung = combobox_ausstattung.get()                                                          # Speichert den momentan ausgewählten Combobox Inhalt als globale variable
-
-combobox_ausstattung = ttk.Combobox(window, values=austattungen)
+combobox_ausstattung = ttk.Combobox(window, values=austattungen, state="readonly")
 combobox_ausstattung.grid(row=3, column=1,  sticky=tk.W)
-combobox_ausstattung.set("Ausstattung")                                                                       # Defaul Wert der Combobox
-combobox_ausstattung.bind("<<ComboboxSelected>>", select_ausstattung)                                                     # Event Handle, wird etwas ausgewählt, wird select funktion ausgeführt
+combobox_ausstattung.set("Ausstattung")                                                                  # Defaul Wert der Combobox
+combobox_ausstattung.bind("<<ComboboxSelected>>", lambda event: select_combobox(event, "ausstattung"))   # Event Handle, wird etwas ausgewählt, wird select funktion ausgeführt
 
 
 # Combobox Hausart
 hausart = list(hausart_standard_dict.keys())                                                       # Liste der Regionen aus dem Dictionary hausart_standard
                   
-label_combobox_hausart = tk.Label(window, text="Hausart auswählen:")                                       # Label für Combobox
+label_combobox_hausart = tk.Label(window, text="Hausart auswählen:")                               # Label für Combobox
 label_combobox_hausart.grid(row=4, sticky=tk.W)
 
-def select_hausart(event):                                                                                 # Wenn eine Bundesland ausgewählt wird, wird es gespeichert
-   global selected_hausart
-   selected_hausart = combobox_hausart.get()                                                              # Speichert den momentan ausgewählten Combobox Inhalt als globale variable
-
-combobox_hausart = ttk.Combobox(window, values=hausart)
+combobox_hausart = ttk.Combobox(window, values=hausart, state="readonly")
 combobox_hausart.grid(row=4, column=1, sticky=tk.W)
-combobox_hausart.set("Hausart")                                                                           # Defaul Wert der Combobox
-combobox_hausart.bind("<<ComboboxSelected>>", select_hausart)                                                     # Event Handle, wird etwas ausgewählt, wird select funktion ausgeführt
+combobox_hausart.set("Hausart")                                                                    # Defaul Wert der Combobox
+combobox_hausart.bind("<<ComboboxSelected>>", lambda event: select_combobox(event, "hausart"))     # Event Handle, wird etwas ausgewählt, wird select funktion ausgeführt
 
 
 # Checkbuttons Architekt, Markler, Denkmalschutz
 label_checkbutton_architekt = tk.Label(window, text ="Architekt:")
 label_checkbutton_architekt.grid(row=5, sticky=tk.W)
 checkbutton_architekt_var = tk.IntVar()                                                                                  
-checkbutton_architekt = tk.Checkbutton(window, variable=checkbutton_architekt_var)              # Erstellt Checkbuttons und verknüft mit Variablen
+checkbutton_architekt = tk.Checkbutton(window, variable=checkbutton_architekt_var)                 # Erstellt Checkbuttons und verknüft mit Variablen
 checkbutton_architekt.grid(row=5, column=1, sticky=tk.W)
 
 label_checkbutton_markler = tk.Label(window, text ="Markler:")
-label_checkbutton_markler.grid(row=6, sticky=tk.W)                                                 # varx.get() gibt den Wert der Checkbox zurück
-checkbutton_markler_var = tk.IntVar()                                                                     # 1 für checked, 0 für unchecked
+label_checkbutton_markler.grid(row=6, sticky=tk.W)                                                 
+checkbutton_markler_var = tk.IntVar()                                                              # 1 für checked, 0 für unchecked
 checkbutton_markler = tk.Checkbutton(window, variable=checkbutton_markler_var)
 checkbutton_markler.grid(row=6, column=1, sticky=tk.W)
 
@@ -281,28 +313,36 @@ label_empty.grid(row=14, columnspan=2)
 
 
 def reset_all():
-    # Comboboxen
-    combobox_bundesland.set("Bundesland")  
-    combobox_region.set("Region")          
-    combobox_ausstattung.set("Ausstattung") 
-    combobox_hausart.set("Hausart")       
+   # Comboboxen Anzeige
+   combobox_bundesland.set("Bundesland")  
+   combobox_region.set("Region")          
+   combobox_ausstattung.set("Ausstattung") 
+   combobox_hausart.set("Hausart")
 
-    # Checkbuttons
-    checkbutton_architekt_var.set(0)       
-    checkbutton_markler_var.set(0)         
-    checkbutton_denkmalschutz_var.set(0)   
+   # Comboboxwerte
+   global selected_bundesland, selected_region
+   global selected_ausstattung, selected_hausart
+   selected_bundesland = None                                                                # Werte auf None um später zu prüfen, ob etwas ausgewählt wurde.
+   selected_region = None
+   selected_ausstattung = None
+   selected_hausart = None       
 
-    # Entry 
-    entry_grundstuecksflaeche.delete(0, tk.END)    # tk.END: Der Index für das Ende des Texts im Widget.
-    entry_wohnflaeche.delete(0, tk.END)          
-    entry_baujahr.delete(0, tk.END)              
+   # Checkbuttons
+   checkbutton_architekt_var.set(0)       
+   checkbutton_markler_var.set(0)         
+   checkbutton_denkmalschutz_var.set(0)   
 
-    # Label
-    label_output_text.config(text="")
-    label_output_result.config(text="")
+   # Entry 
+   entry_grundstuecksflaeche.delete(0, tk.END)                                               # tk.END: Der Index für das Ende des Texts im Widget.
+   entry_wohnflaeche.delete(0, tk.END)          
+   entry_baujahr.delete(0, tk.END)              
+
+   # Label
+   label_output_text.config(text="")
+   label_output_result.config(text="")
 
 # Button Reset
-button_reset = tk.Button(window, text="Reset", width=25, command=reset_all)         # Erstellt Button mit der exit Funktion
+button_reset = tk.Button(window, text="Reset", width=25, command=reset_all)                  # Erstellt Button mit der reset Funktion
 button_reset.grid(row=15, columnspan=2)
 
 
@@ -312,17 +352,24 @@ label_empty.grid(row=16, columnspan=2)
 
 
 # PDF Erstellen
+def pdf_create() -> None:
+   pass
 
+
+# Button PDF
+button_pdf = tk.Button(window, text='PDF erstellen', width=25, command=pdf_create)           # Erstellt Button mit der pdf Funktion
+button_pdf.grid(row=17, columnspan=2)
 
 
 # Leere Row
 label_empty = tk.Label(window, text="")
-label_empty.grid(row=17, columnspan=2)
+label_empty.grid(row=18, columnspan=2)
 
 
 # Button Exit
-button_exit = tk.Button(window, text='Exit', width=25, command=window.destroy)         # Erstellt Button mit der exit Funktion
+button_exit = tk.Button(window, text='Exit', width=25, command=window.destroy)               # Erstellt Button mit der exit Funktion
 button_exit.grid(row=100, columnspan=2)
 
 # Starten des GUI
+window.config(menu=menubar)
 window.mainloop()
