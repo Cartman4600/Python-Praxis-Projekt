@@ -139,29 +139,46 @@ class Immobilie:
 window = tk.Tk()                                                                                   # Erstellt ein GUI Fenstser
 window.geometry("800x600")                                                                         # Legt die Größe des Fensters fest
 window.title("Real Estate Price Calculator")                                                       # Gibt dem Fenster einen Titel
-
+window.iconbitmap(r"icon.ico")
 # Menubar erstellen
-menubar = tk.Menu(window)                                                                          # Erstellt eine Menubar für das Fenster window
-filemenu = tk.Menu(menubar, tearoff=0)                                                             # Dropdown Menu, dass nicht abgetrennt(tearoff=0) ist
-
+menubar = tk.Menu(window, bg="#f0f0f0", activebackground="#d0d0d0")                                                                          # Erstellt eine Menubar für das Fenster window
+                                                                                                                                             # Dropdown Menu, dass nicht abgetrennt(tearoff=0) ist
 # Menubar Funktionen
 def donothing():
    pass
 
-# Menubar 
+# Menubar
+filemenu = tk.Menu(menubar, tearoff=0)   
 filemenu.add_command(label="Preisinfomationen laden", command=donothing)
 filemenu.add_separator()
 filemenu.add_command(label="Beenden", command=window.destroy)
 menubar.add_cascade(label="File", menu=filemenu)
 
+languagemenu = tk.Menu(menubar, tearoff=0)
+languagemenu.add_command(label="Deutsch", command=donothing)
+languagemenu.add_command(label="English", command=donothing)
+languagemenu.add_command(label="日本語", command=donothing)
+menubar.add_cascade(label="Language", menu=languagemenu)
+
 helpmenu = tk.Menu(menubar, tearoff=0)
+helpmenu.add_separator()
 helpmenu.add_command(label="About", command=donothing)
 menubar.add_cascade(label="Help", menu=helpmenu)
 
+# den Reiter Sprache durchwechseln lassen:
+language_index = 0
 
+def switch_language() -> None:
+   global language_index
+   languages = ["Sprache", "Language", "言語"]
+   menubar.entryconfig(2, label=languages[language_index])
+   language_index = (language_index + 1) % len(languages)
+   window.after(5000, switch_language)
+
+window.after(5000, switch_language) 
 ####################################################################################################
-# Fenster Design
 
+# Fenster Design
 label_welcome = tk.Label(window, text='Willkommen!')                                               # Erstellt ein Label im Fenster "window"
 label_welcome.grid(row=0, column=4, sticky=tk.W)   
 
@@ -267,31 +284,77 @@ entry_baujahr.grid(row=10, column=1)
 
 
 # Button Berechnug Command-Funktion
-def button_berechnung_command() ->None:
+def button_berechnung_command() -> None:
+   try:                                                                                           #                                                                                           
+      input_grundstuecksflaeche = entry_grundstuecksflaeche.get()
+      input_wohnflaeche = entry_wohnflaeche.get()
+      input_baujahr = entry_baujahr.get()
+      architekt_status = checkbutton_architekt_var.get()
+      markler_status = checkbutton_markler_var.get()
+      denkmalschutz_status = checkbutton_denkmalschutz_var.get()
 
-   input_grundstuecksflaeche = int(entry_grundstuecksflaeche.get())
-   input_wohnflaeche = int(entry_wohnflaeche.get())
-   input_baujahr = int(entry_baujahr.get())
-   architekt_status = checkbutton_architekt_var.get()
-   markler_status = checkbutton_markler_var.get()
-   denkmalschutz_status = checkbutton_denkmalschutz_var.get()
+      fehlender_input = []
 
-   immobilie = Immobilie(grundstuecksflaeche = input_grundstuecksflaeche,
-                        wohnflaeche = input_wohnflaeche,
-                        baujahr = input_baujahr
-                        )
-   
-   schaetzwert = immobilie.berechnung(selected_bundesland,
-                                    selected_region, 
-                                    selected_ausstattung, 
-                                    selected_hausart, 
-                                    architekt_status, 
-                                    markler_status, 
-                                    denkmalschutz_status
-                        )
-   
-   label_output_text.config(text = "Deine Immobilien hat den Schätzwert:")
-   label_output_result.config(text = f"{schaetzwert:,}€")
+      if selected_bundesland is None:
+         fehlender_input.append("Bundesland")
+      if selected_region is None:
+         fehlender_input.append("Region")
+      if selected_ausstattung is None:
+         fehlender_input.append("Ausstattung")
+      if selected_hausart is None:
+         fehlender_input.append("Hausart")
+      if not input_grundstuecksflaeche: 
+         fehlender_input.append("Grundstücksfläche")
+      if not input_wohnflaeche: 
+         fehlender_input.append("Wohnfläche")
+      if not input_baujahr:  
+         fehlender_input.append("Baujahr")
+         
+      if fehlender_input:
+         fehlender_input_str = ", ".join(fehlender_input)
+         messagebox.showerror("Fehlende oder ungültige Eingaben", f"Bitte geben Sie ein(e) gültige(s) {fehlender_input_str} ein.")
+         return  
+                
+      falscher_input = []
+        
+      if not input_grundstuecksflaeche.isdigit():
+            falscher_input.append("Grundstücksfläche")
+      if not input_wohnflaeche.isdigit():
+            falscher_input.append("Wohnfläche")
+      if not input_baujahr.isdigit():
+            falscher_input.append("Baujahr")
+         
+      if falscher_input:
+            falscher_input_str = ", ".join(falscher_input)
+            messagebox.showerror("Ungültige Eingabe", f"Bitte geben Sie ein(e) gültige(s) {falscher_input_str} ein.")
+            return
+      
+      current_year = dt.datetime.now().year
+      if input_baujahr:
+         baujahr = int(input_baujahr) 
+      if baujahr > current_year:
+         messagebox.showerror("Ungültiges Baujahr", "Das Baujahr kann nicht in der Zukunft liegen.")
+         return
+
+
+
+      immobilie = Immobilie(grundstuecksflaeche=int(input_grundstuecksflaeche),
+                              wohnflaeche=int(input_wohnflaeche),
+                              baujahr=int(input_baujahr)
+                              )
+
+      schaetzwert = immobilie.berechnung(selected_bundesland,
+                                           selected_region,
+                                           selected_ausstattung,
+                                           selected_hausart,
+                                           architekt_status,
+                                           markler_status,
+                                           denkmalschutz_status
+                                           )
+      label_output_text.config(text="Deine Immobilie hat den Schätzwert:")
+      label_output_result.config(text=f"{schaetzwert:,}€")
+   except Exception as alle_fehler:
+        messagebox.showerror("Fehler", f"Es ist ein Fehler aufgetreten: {str(alle_fehler)}")
 
 # Button Berechnung
 button_berechnung = tk.Button(window, text="Immobilienwert schätzen", width=25,
